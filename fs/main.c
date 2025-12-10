@@ -28,6 +28,8 @@ PRIVATE void read_super_block(int dev);
 PRIVATE int fs_fork();
 PRIVATE int fs_exit();
 
+
+
 /*****************************************************************************
  *                                task_fs
  *****************************************************************************/
@@ -47,6 +49,11 @@ PUBLIC void task_fs()
 		int msgtype = fs_msg.type;
 		int src = fs_msg.source;
 		pcaller = &proc_table[src];
+
+        /* LOG_FS */
+        if (LOG_ALL & LOG_FS) {
+            klog(LOG_FS, "FS: Msg %d from %d\n", msgtype, src);
+        }
 
 		switch (msgtype) {
 		case OPEN:

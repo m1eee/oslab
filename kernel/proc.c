@@ -23,6 +23,8 @@ PRIVATE int  msg_send(struct proc* current, int dest, MESSAGE* m);
 PRIVATE int  msg_receive(struct proc* current, int src, MESSAGE* m);
 PRIVATE int  deadlock(int src, int dest);
 
+
+
 /*****************************************************************************
  *                                schedule
  *****************************************************************************/
@@ -50,6 +52,13 @@ PUBLIC void schedule()
 				if (p->p_flags == 0)
 					p->ticks = p->priority;
 	}
+
+    /* LOG_SCHED */
+    if (LOG_ALL & LOG_SCHED) {
+        /* Avoid logging every single tick switch if same proc, maybe? */
+        /* For now, just log everything as requested */
+        klog(LOG_SCHED, "SCHED: Switch to %s (PID:%d)\n", p_proc_ready->name, proc2pid(p_proc_ready));
+    }
 }
 
 /*****************************************************************************
@@ -71,6 +80,12 @@ PUBLIC int sys_sendrec(int function, int src_dest, MESSAGE* m, struct proc* p)
 	assert((src_dest >= 0 && src_dest < NR_TASKS + NR_PROCS) ||
 	       src_dest == ANY ||
 	       src_dest == INTERRUPT);
+
+    /* LOG_SYSCALL */
+    klog(LOG_SYSCALL, "IPC: %s(%d) %s %d\n", 
+         p->name, proc2pid(p), 
+         (function == SEND) ? "->" : "<-", 
+         src_dest);
 
 	int ret = 0;
 	int caller = proc2pid(p);
