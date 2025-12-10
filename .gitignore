@@ -1,6 +1,7 @@
-*.img
 *.bin
 *.a
 *.o
 *.map
 bochsout.txt
+push.sh
+
