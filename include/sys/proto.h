@@ -117,6 +117,12 @@ PUBLIC int      do_kill_proc();
 /* mm/exec.c */
 PUBLIC int		do_exec();
 
+/* mm/integrity.c */
+PUBLIC u32		calculate_crc32(const u8 *data, u32 len);
+PUBLIC int		verify_executable_integrity(const char *pathname, 
+                                            const u8 *file_data, 
+                                            u32 file_size);
+
 /* console.c */
 PUBLIC void out_char(CONSOLE* p_con, char ch);
 PUBLIC void scroll_screen(CONSOLE* p_con, int direction);

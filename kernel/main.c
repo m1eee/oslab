@@ -180,7 +180,9 @@ struct posix_tar_header
  *****************************************************************************/
 void untar(const char * filename)
 {
-	printf("[extract `%s'\n", filename);
+	printf("{UNTAR} ========== Extracting command archive ==========\n");
+	printf("{UNTAR} Opening archive: %s\n", filename);
+	
 	int fd = open(filename, O_RDWR);
 	assert(fd != -1);
 
@@ -196,7 +198,7 @@ void untar(const char * filename)
 					       */
 		if (buf[0] == 0) {
 			if (i == 0)
-				printf("    need not unpack the file.\n");
+				printf("{UNTAR} Archive is empty or already extracted.\n");
 			break;
 		}
 		i++;
@@ -212,12 +214,12 @@ void untar(const char * filename)
 		int bytes_left = f_len;
 		int fdout = open(phdr->name, O_CREAT | O_RDWR | O_TRUNC);
 		if (fdout == -1) {
-			printf("    failed to extract file: %s\n", phdr->name);
-			printf(" aborted]\n");
+			printf("{UNTAR} [ERROR] Failed to extract: %s\n", phdr->name);
+			printf("{UNTAR} Extraction aborted!\n");
 			close(fd);
 			return;
 		}
-		printf("    %s\n", phdr->name);
+		printf("{UNTAR} [EXTRACT] %s (size=%d bytes)\n", phdr->name, f_len);
 		while (bytes_left) {
 			int iobytes = min(chunk, bytes_left);
 			read(fd, buf,
@@ -238,7 +240,7 @@ void untar(const char * filename)
 
 	close(fd);
 
-	printf(" done, %d files extracted]\n", i);
+	printf("{UNTAR} ========== Extraction complete: %d files ==========\n", i);
 }
 
 /*****************************************************************************
@@ -307,8 +309,12 @@ void shabby_shell(const char * tty_name)
                 continue;
             }
 
+            /* ===== 命令查找与加载流程 ===== */
+            printf("{SHELL} [LOOKUP] Searching for command: %s\n", argv[0]);
+            
             int fd = open(argv[0], O_RDWR);
             if (fd == -1) {
+                printf("{SHELL} [NOT_FOUND] Command not found: %s\n", argv[0]);
                 if (current_cmd[0]) {
                     write(1, "{", 1);
                     write(1, current_cmd, strlen(current_cmd));
@@ -316,15 +322,22 @@ void shabby_shell(const char * tty_name)
                 }
             }
             else {
+                printf("{SHELL} [FOUND] Command exists: %s\n", argv[0]);
                 close(fd);
+                
+                printf("{SHELL} [FORK] Creating child process for: %s\n", argv[0]);
                 int pid = fork();
                 if (pid != 0) { 
+                    printf("{SHELL} [PARENT] Child PID=%d, waiting...\n", pid);
                     int s;
                     // 并行执行的关键点
                     // 如果想要完全并行，需要把 wait 注释掉，但完全的并行会导致输出混乱
                     wait(&s); 
+                    printf("{SHELL} [PARENT] Child exited with status=%d\n", s);
                 }
                 else {  
+                    printf("{SHELL} [CHILD] Calling exec for: %s\n", argv[0]);
+                    /* exec 内部会调用 verify_executable_integrity 进行校验 */
                     execv(argv[0], argv);
                 }
             }
