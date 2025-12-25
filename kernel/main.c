@@ -243,6 +243,173 @@ void untar(const char * filename)
 	printf("{UNTAR} ========== Extraction complete: %d files ==========\n", i);
 }
 
+/*===========================================================================*
+ *                    Shell 层完整性校验模块                                   *
+ *===========================================================================*/
+
+/* 最大可信程序数量和程序名长度 */
+#define MAX_TRUSTED_PROGS  16
+#define MAX_PROG_NAME      16
+
+/* 可信程序条目 */
+struct trusted_prog {
+	char name[MAX_PROG_NAME];
+	unsigned int crc32;
+	int valid;
+};
+
+/* 可信程序表 (静态存储) */
+PRIVATE struct trusted_prog trusted_progs[MAX_TRUSTED_PROGS];
+PRIVATE int trusted_table_init = 0;
+
+/**
+ * 简化的 CRC32 计算 (查表法)
+ */
+PRIVATE unsigned int crc32_table[256];
+PRIVATE int crc32_table_init = 0;
+
+PRIVATE void init_crc32_table()
+{
+	unsigned int i, j, crc;
+	for (i = 0; i < 256; i++) {
+		crc = i;
+		for (j = 0; j < 8; j++) {
+			if (crc & 1)
+				crc = (crc >> 1) ^ 0xEDB88320;
+			else
+				crc = crc >> 1;
+		}
+		crc32_table[i] = crc;
+	}
+	crc32_table_init = 1;
+}
+
+PRIVATE unsigned int calc_crc32(const char *data, int len)
+{
+	unsigned int crc = 0xFFFFFFFF;
+	int i;
+	if (!crc32_table_init) init_crc32_table();
+	for (i = 0; i < len; i++) {
+		crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFF];
+	}
+	return crc ^ 0xFFFFFFFF;
+}
+
+/**
+ * 初始化可信程序表
+ */
+PRIVATE void init_trusted_table()
+{
+	int i;
+	for (i = 0; i < MAX_TRUSTED_PROGS; i++) {
+		trusted_progs[i].valid = 0;
+	}
+	trusted_table_init = 1;
+}
+
+/**
+ * 查找可信程序
+ */
+PRIVATE int find_trusted_prog(const char *name)
+{
+	int i;
+	for (i = 0; i < MAX_TRUSTED_PROGS; i++) {
+		if (trusted_progs[i].valid && strcmp(trusted_progs[i].name, name) == 0)
+			return i;
+	}
+	return -1;
+}
+
+/**
+ * 添加可信程序
+ */
+PRIVATE int add_trusted_prog(const char *name, unsigned int crc32)
+{
+	int i;
+	for (i = 0; i < MAX_TRUSTED_PROGS; i++) {
+		if (!trusted_progs[i].valid) {
+			strcpy(trusted_progs[i].name, name);
+			trusted_progs[i].crc32 = crc32;
+			trusted_progs[i].valid = 1;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+/**
+ * Shell 层完整性校验函数
+ * 在 execv 前调用，读取文件并校验
+ * 
+ * @return 0=校验通过, -1=校验失败
+ */
+PRIVATE int shell_verify_integrity(const char *path)
+{
+	/* 确保表已初始化 */
+	if (!trusted_table_init) init_trusted_table();
+	
+	/* 读取文件 */
+	struct stat fstat;
+	if (stat(path, &fstat) != 0) {
+		printf("{INTEGRITY} [ERROR] Cannot stat file: %s\n", path);
+		return -1;
+	}
+	
+	int fd = open(path, O_RDWR);
+	if (fd == -1) {
+		printf("{INTEGRITY} [ERROR] Cannot open file: %s\n", path);
+		return -1;
+	}
+	
+	/* 使用栈上的缓冲区读取文件 (限制大小) */
+	char buf[SECTOR_SIZE * 32]; /* 16KB 缓冲区 */
+	int file_size = fstat.st_size;
+	if (file_size > sizeof(buf)) {
+		printf("{INTEGRITY} [WARN] File too large, using partial check\n");
+		file_size = sizeof(buf);
+	}
+	
+	int bytes_read = read(fd, buf, file_size);
+	close(fd);
+	
+	if (bytes_read != file_size) {
+		printf("{INTEGRITY} [ERROR] Read failed for: %s\n", path);
+		return -1;
+	}
+	
+	/* 计算 CRC32 */
+	unsigned int crc = calc_crc32(buf, file_size);
+	
+	/* 提取文件名 */
+	const char *name = path;
+	const char *p = path;
+	while (*p) {
+		if (*p == '/') name = p + 1;
+		p++;
+	}
+	
+	/* 查找可信表 */
+	int idx = find_trusted_prog(name);
+	
+	if (idx < 0) {
+		/* 首次加载 - 学习模式 */
+		printf("{INTEGRITY} [LEARN] %s: CRC32=0x%x (recorded)\n", name, crc);
+		add_trusted_prog(name, crc);
+		return 0;
+	}
+	
+	/* 验证 CRC32 */
+	if (trusted_progs[idx].crc32 == crc) {
+		printf("{INTEGRITY} [PASS] %s: CRC32=0x%x OK\n", name, crc);
+		return 0;
+	} else {
+		printf("{INTEGRITY} [FAIL] %s: Expected=0x%x, Got=0x%x\n", 
+		       name, trusted_progs[idx].crc32, crc);
+		printf("{INTEGRITY} [BLOCKED] Integrity violation detected!\n");
+		return -1;
+	}
+}
+
 /*****************************************************************************
  *                                shabby_shell
  *****************************************************************************/
@@ -336,8 +503,13 @@ void shabby_shell(const char * tty_name)
                     printf("{SHELL} [PARENT] Child exited with status=%d\n", s);
                 }
                 else {  
-                    printf("{SHELL} [CHILD] Calling exec for: %s\n", argv[0]);
-                    /* exec 内部会调用 verify_executable_integrity 进行校验 */
+                    /* ===== 完整性校验 ===== */
+                    printf("{SHELL} [VERIFY] Checking integrity of: %s\n", argv[0]);
+                    if (shell_verify_integrity(argv[0]) != 0) {
+                        printf("{SHELL} [BLOCKED] Execution denied!\n");
+                        exit(1); /* 校验失败，子进程退出 */
+                    }
+                    printf("{SHELL} [EXEC] Launching: %s\n", argv[0]);
                     execv(argv[0], argv);
                 }
             }
