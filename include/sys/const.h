@@ -144,12 +144,19 @@
 #define	MAX_TICKS	0x7FFFABCD
 
 /* system call */
-#define NR_SYS_CALL	3
+#define NR_SYS_CALL	4
 
 /* ipc */
 #define SEND		1
 #define RECEIVE		2
 #define BOTH		3	/* BOTH = (SEND | RECEIVE) */
+
+/* system log masks */
+#define LOG_SCHED   0x01
+#define LOG_FS      0x02
+#define LOG_SYSCALL 0x04
+#define LOG_DEV     0x08
+#define LOG_ALL     (LOG_SCHED | LOG_FS | LOG_SYSCALL | LOG_DEV)
 
 /* magic chars used by `printx' */
 #define MAG_CH_PANIC	'\002'
@@ -289,7 +296,7 @@ enum msgtype {
 #define	is_special(m)	((((m) & I_TYPE_MASK) == I_BLOCK_SPECIAL) ||	\
 			 (((m) & I_TYPE_MASK) == I_CHAR_SPECIAL))
 
-#define	NR_DEFAULT_FILE_SECTS	2048 /* 2048 * 512 = 1MB */
+#define	NR_DEFAULT_FILE_SECTS	256 /* 16 * 512 */
 
 
 

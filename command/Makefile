@@ -8,11 +8,11 @@ DASM		= objdump
 CC		= gcc
 LD		= ld
 ASMFLAGS	= -I ../include/ -f elf
-CFLAGS		= -I ../include/ -c -fno-builtin -fno-stack-protector -Wall
+CFLAGS		= -I ../include/ -I ../include/sys/ -c -fno-builtin -fno-stack-protector -Wall
 LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
-BIN		= echo pwd ls open kill touch rm ps poc
+BIN		= echo pwd ls open kill touch rm ps syslogd dmesg
 
 # All Phony Targets
 .PHONY : everything final clean realclean disasm all install
@@ -41,6 +41,12 @@ kernel.bin :
 
 start.o : start.asm
 	$(ASM) $(ASMFLAGS) -o $@ $<
+
+syslogd.o: syslogd.c ../include/cmd_head.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+syslogd : syslogd.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
 
 echo.o: echo.c ../include/cmd_head.h 
 	$(CC) $(CFLAGS) -o $@ $<
@@ -84,8 +90,8 @@ ps.o: ps.c ../include/cmd_head.h
 ps : ps.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-
-poc.o: poc.c ../include/cmd_head.h
+dmesg.o: dmesg.c ../include/cmd_head.h
 	$(CC) $(CFLAGS) -o $@ $<
-poc : poc.o start.o $(LIB)
+dmesg : dmesg.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
+

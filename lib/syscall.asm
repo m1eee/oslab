@@ -14,9 +14,24 @@ _NR_sendrec	    equ 1
 ; 导出符号
 global	printx
 global	sendrec
+global  getklog
 
 bits 32
 [section .text]
+
+; ====================================================================================
+;                          int getklog(char* buf);
+; ====================================================================================
+getklog:
+	push	edx		; 4 bytes
+
+	mov	eax, 2          ; _NR_getklog = 2
+	mov	edx, [esp + 4 + 4]	; buf
+	int	INT_VECTOR_SYS_CALL
+
+	pop	edx
+
+	ret
 
 ; ====================================================================================
 ;                  sendrec(int function, int src_dest, MESSAGE* msg);
