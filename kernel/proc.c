@@ -138,7 +138,10 @@ PUBLIC void* va2la(int pid, void* va)
 	struct proc* p = &proc_table[pid];
 
 	u32 seg_base = ldt_seg_linear(p, INDEX_LDT_RW);
-	u32 la = seg_base + (u32)va;
+	u32 uva = (u32)va;          /* 直接按 32 位指针处理 */
+	u64 temp = (u64)seg_base + (u64)uva;
+	assert((temp>>32) == 0);
+	u32 la = (u32)temp;
 
 	if (pid < NR_TASKS + NR_NATIVE_PROCS) {
 		assert(la == (u32)va);
