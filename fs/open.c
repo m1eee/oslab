@@ -363,6 +363,7 @@ PRIVATE struct inode * new_inode(int dev, int inode_nr, int start_sect)
 	new_inode->i_size = 0;
 	new_inode->i_start_sect = start_sect;
 	new_inode->i_nr_sects = NR_DEFAULT_FILE_SECTS;
+	memset(new_inode->_unused, 0, sizeof(new_inode->_unused));
 
 	new_inode->i_dev = dev;
 	new_inode->i_cnt = 1;
