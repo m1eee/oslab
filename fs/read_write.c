@@ -190,9 +190,7 @@ PUBLIC int do_rdwt()
 		if (fs_msg.type == WRITE) {
 			// 对老的明文文件：先整文件迁移加密一次
 			if (!enc && (pin->i_mode & I_TYPE_MASK) == I_REGULAR) {
-				printl("[enc] pid=%d fd=%d ino=%d dev=%d size=%u start=%u nr_sects=%u\n",
-       fs_msg.source, fd, pin->i_num, pin->i_dev,
-       pin->i_size, pin->i_start_sect, pin->i_nr_sects);
+				printl("[enc] pid=%d fd=%d ino=%d",fs_msg.source, fd, pin->i_num);
 				ensure_file_encrypted(pin);
 				enc = 1; // 迁移后视为加密文件 
 			}

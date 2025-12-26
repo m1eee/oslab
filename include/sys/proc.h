@@ -85,6 +85,8 @@ struct task {
 #define FIRST_PROC		proc_table[0]
 #define LAST_PROC		proc_table[NR_TASKS + NR_PROCS - 1]
 
+#define MEASURE_INTERVAL_TICKS  (HZ * 2)
+
 /**
  * All forked proc will use memory above PROCS_BASE.
  *

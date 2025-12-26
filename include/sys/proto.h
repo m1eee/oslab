@@ -156,3 +156,5 @@ PUBLIC  int getklog(char * buf);
 /* kernel/log.c */
 PUBLIC void klog(int type, char *fmt, ...);
 
+/* kernel/measure.c */
+PUBLIC void do_measure_current(void);

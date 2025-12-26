@@ -32,6 +32,8 @@ EXTERN	int	key_pressed; /**
 EXTERN	struct tss	tss;
 EXTERN	struct proc*	p_proc_ready;
 
+EXTERN  int measure_pending;
+EXTERN	int measure_cnt;
 extern	char		task_stack[];
 extern	struct proc	proc_table[];
 extern  struct task	task_table[];
