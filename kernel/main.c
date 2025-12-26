@@ -17,6 +17,8 @@
 #include "global.h"
 #include "proto.h"
 
+#define _DEBUG printf
+
 
 /*****************************************************************************
  *                               kernel_main
@@ -170,6 +172,167 @@ struct posix_tar_header
 	/* 500 */
 };
 
+/*===========================================================================*
+ *                    完整性校验模块 (CRC32 + 文件末尾存储)                      *
+ *===========================================================================*/
+
+/* CRC32 签名魔数，用于标识文件已签名 */
+#define CRC32_MAGIC      0x43524332  /* "CRC2" */
+#define CRC32_SIG_SIZE   8           /* 4字节CRC32 + 4字节魔数 */
+
+/**
+ * 简化的 CRC32 计算 (查表法)
+ */
+PRIVATE unsigned int crc32_table[256];
+PRIVATE int crc32_table_init = 0;
+
+PRIVATE void init_crc32_table()
+{
+	unsigned int i, j, crc;
+	for (i = 0; i < 256; i++) {
+		crc = i;
+		for (j = 0; j < 8; j++) {
+			if (crc & 1)
+				crc = (crc >> 1) ^ 0xEDB88320;
+			else
+				crc = crc >> 1;
+		}
+		crc32_table[i] = crc;
+	}
+	crc32_table_init = 1;
+}
+
+PRIVATE unsigned int calc_crc32(const char *data, int len)
+{
+	unsigned int crc = 0xFFFFFFFF;
+	int i;
+	if (!crc32_table_init) init_crc32_table();
+	for (i = 0; i < len; i++) {
+		crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFF];
+	}
+	return crc ^ 0xFFFFFFFF;
+}
+
+/**
+ * 为文件计算并追加 CRC32 签名 (学习模式)
+ * 在 untar 解压后调用
+ */
+PRIVATE void sign_executable(const char *path, int original_size)
+{
+	char buf[SECTOR_SIZE * 32];
+	
+	/* 打开文件读取内容 */
+	int fd = open(path, O_RDWR);
+	if (fd == -1) {
+		printf("{INTEGRITY} [ERROR] Cannot open for signing: %s\n", path);
+		return;
+	}
+	
+	int read_size = original_size;
+	if (read_size > sizeof(buf)) {
+		read_size = sizeof(buf);
+	}
+	
+	int bytes = read(fd, buf, read_size);
+	if (bytes != read_size) {
+		printf("{INTEGRITY} [ERROR] Read failed for signing: %s\n", path);
+		close(fd);
+		return;
+	}
+	
+	/* 计算 CRC32 */
+	unsigned int crc = calc_crc32(buf, read_size);
+	
+	/* 追加签名到文件末尾: [CRC32][MAGIC] */
+	lseek(fd, original_size, SEEK_SET);
+	write(fd, &crc, 4);
+	unsigned int magic = CRC32_MAGIC;
+	write(fd, &magic, 4);
+	close(fd);
+	
+	printf("{INTEGRITY} [LEARN] %s: CRC32=0x%x (signed)\n", path, crc);
+}
+
+/**
+ * 验证可执行文件完整性
+ * @return 0=校验通过, -1=校验失败
+ */
+PRIVATE int verify_integrity(const char *path)
+{
+	char buf[SECTOR_SIZE * 32];
+	struct stat fstat;
+	
+	/* 获取文件大小 */
+	if (stat(path, &fstat) != 0) {
+		printf("{INTEGRITY} [ERROR] Cannot stat: %s\n", path);
+		return -1;
+	}
+	
+	int file_size = fstat.st_size;
+	
+	/* 检查文件是否有签名 (至少 8 字节) */
+	if (file_size < CRC32_SIG_SIZE) {
+		printf("{INTEGRITY} [WARN] File too small, no signature: %s\n", path);
+		return 0; /* 允许执行未签名的小文件 */
+	}
+	
+	/* 打开并读取文件 */
+	int fd = open(path, O_RDWR);
+	if (fd == -1) {
+		printf("{INTEGRITY} [ERROR] Cannot open: %s\n", path);
+		return -1;
+	}
+	
+	int read_size = file_size;
+	if (read_size > sizeof(buf)) {
+		printf("{INTEGRITY} [WARN] File too large, partial verify\n");
+		read_size = sizeof(buf);
+	}
+	
+	int bytes = read(fd, buf, read_size);
+	close(fd);
+	
+	if (bytes != read_size) {
+		printf("{INTEGRITY} [ERROR] Read failed: %s\n", path);
+		return -1;
+	}
+	
+	/* 读取签名: 最后 8 字节 */
+	unsigned int stored_crc, stored_magic;
+	char *sig_ptr = buf + read_size - CRC32_SIG_SIZE;
+	stored_crc = *(unsigned int *)sig_ptr;
+	stored_magic = *(unsigned int *)(sig_ptr + 4);
+	
+	/* 检查魔数 */
+	if (stored_magic != CRC32_MAGIC) {
+		printf("{INTEGRITY} [WARN] No valid signature found: %s\n", path);
+		return 0; /* 允许执行未签名文件 */
+	}
+	
+	/* 计算原始数据的 CRC32 (不包含签名) */
+	int data_size = read_size - CRC32_SIG_SIZE;
+	unsigned int computed_crc = calc_crc32(buf, data_size);
+	
+	/* 提取文件名用于显示 */
+	const char *name = path;
+	const char *p = path;
+	while (*p) {
+		if (*p == '/') name = p + 1;
+		p++;
+	}
+	
+	/* 比对 */
+	if (computed_crc == stored_crc) {
+		printf("{INTEGRITY} [PASS] %s: CRC32=0x%x OK\n", name, computed_crc);
+		return 0;
+	} else {
+		printf("{INTEGRITY} [FAIL] %s: Expected=0x%x, Got=0x%x\n", 
+		       name, stored_crc, computed_crc);
+		printf("{INTEGRITY} [BLOCKED] Integrity violation!\n");
+		return -1;
+	}
+}
+
 /*****************************************************************************
  *                                untar
  *****************************************************************************/
@@ -229,6 +392,10 @@ void untar(const char * filename)
 			bytes_left -= iobytes;
 		}
 		close(fdout);
+		
+		/* 解压完成后，为文件签名 (学习模式) */
+		_DEBUG("![DEBUG] name:%s, size:%d\n", phdr->name, f_len); 
+		sign_executable(phdr->name, f_len);
 	}
 
 	if (i) {
@@ -241,173 +408,6 @@ void untar(const char * filename)
 	close(fd);
 
 	printf("{UNTAR} ========== Extraction complete: %d files ==========\n", i);
-}
-
-/*===========================================================================*
- *                    Shell 层完整性校验模块                                   *
- *===========================================================================*/
-
-/* 最大可信程序数量和程序名长度 */
-#define MAX_TRUSTED_PROGS  16
-#define MAX_PROG_NAME      16
-
-/* 可信程序条目 */
-struct trusted_prog {
-	char name[MAX_PROG_NAME];
-	unsigned int crc32;
-	int valid;
-};
-
-/* 可信程序表 (静态存储) */
-PRIVATE struct trusted_prog trusted_progs[MAX_TRUSTED_PROGS];
-PRIVATE int trusted_table_init = 0;
-
-/**
- * 简化的 CRC32 计算 (查表法)
- */
-PRIVATE unsigned int crc32_table[256];
-PRIVATE int crc32_table_init = 0;
-
-PRIVATE void init_crc32_table()
-{
-	unsigned int i, j, crc;
-	for (i = 0; i < 256; i++) {
-		crc = i;
-		for (j = 0; j < 8; j++) {
-			if (crc & 1)
-				crc = (crc >> 1) ^ 0xEDB88320;
-			else
-				crc = crc >> 1;
-		}
-		crc32_table[i] = crc;
-	}
-	crc32_table_init = 1;
-}
-
-PRIVATE unsigned int calc_crc32(const char *data, int len)
-{
-	unsigned int crc = 0xFFFFFFFF;
-	int i;
-	if (!crc32_table_init) init_crc32_table();
-	for (i = 0; i < len; i++) {
-		crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFF];
-	}
-	return crc ^ 0xFFFFFFFF;
-}
-
-/**
- * 初始化可信程序表
- */
-PRIVATE void init_trusted_table()
-{
-	int i;
-	for (i = 0; i < MAX_TRUSTED_PROGS; i++) {
-		trusted_progs[i].valid = 0;
-	}
-	trusted_table_init = 1;
-}
-
-/**
- * 查找可信程序
- */
-PRIVATE int find_trusted_prog(const char *name)
-{
-	int i;
-	for (i = 0; i < MAX_TRUSTED_PROGS; i++) {
-		if (trusted_progs[i].valid && strcmp(trusted_progs[i].name, name) == 0)
-			return i;
-	}
-	return -1;
-}
-
-/**
- * 添加可信程序
- */
-PRIVATE int add_trusted_prog(const char *name, unsigned int crc32)
-{
-	int i;
-	for (i = 0; i < MAX_TRUSTED_PROGS; i++) {
-		if (!trusted_progs[i].valid) {
-			strcpy(trusted_progs[i].name, name);
-			trusted_progs[i].crc32 = crc32;
-			trusted_progs[i].valid = 1;
-			return 0;
-		}
-	}
-	return -1;
-}
-
-/**
- * Shell 层完整性校验函数
- * 在 execv 前调用，读取文件并校验
- * 
- * @return 0=校验通过, -1=校验失败
- */
-PRIVATE int shell_verify_integrity(const char *path)
-{
-	/* 确保表已初始化 */
-	if (!trusted_table_init) init_trusted_table();
-	
-	/* 读取文件 */
-	struct stat fstat;
-	if (stat(path, &fstat) != 0) {
-		printf("{INTEGRITY} [ERROR] Cannot stat file: %s\n", path);
-		return -1;
-	}
-	
-	int fd = open(path, O_RDWR);
-	if (fd == -1) {
-		printf("{INTEGRITY} [ERROR] Cannot open file: %s\n", path);
-		return -1;
-	}
-	
-	/* 使用栈上的缓冲区读取文件 (限制大小) */
-	char buf[SECTOR_SIZE * 32]; /* 16KB 缓冲区 */
-	int file_size = fstat.st_size;
-	if (file_size > sizeof(buf)) {
-		printf("{INTEGRITY} [WARN] File too large, using partial check\n");
-		file_size = sizeof(buf);
-	}
-	
-	int bytes_read = read(fd, buf, file_size);
-	close(fd);
-	
-	if (bytes_read != file_size) {
-		printf("{INTEGRITY} [ERROR] Read failed for: %s\n", path);
-		return -1;
-	}
-	
-	/* 计算 CRC32 */
-	unsigned int crc = calc_crc32(buf, file_size);
-	
-	/* 提取文件名 */
-	const char *name = path;
-	const char *p = path;
-	while (*p) {
-		if (*p == '/') name = p + 1;
-		p++;
-	}
-	
-	/* 查找可信表 */
-	int idx = find_trusted_prog(name);
-	
-	if (idx < 0) {
-		/* 首次加载 - 学习模式 */
-		printf("{INTEGRITY} [LEARN] %s: CRC32=0x%x (recorded)\n", name, crc);
-		add_trusted_prog(name, crc);
-		return 0;
-	}
-	
-	/* 验证 CRC32 */
-	if (trusted_progs[idx].crc32 == crc) {
-		printf("{INTEGRITY} [PASS] %s: CRC32=0x%x OK\n", name, crc);
-		return 0;
-	} else {
-		printf("{INTEGRITY} [FAIL] %s: Expected=0x%x, Got=0x%x\n", 
-		       name, trusted_progs[idx].crc32, crc);
-		printf("{INTEGRITY} [BLOCKED] Integrity violation detected!\n");
-		return -1;
-	}
 }
 
 /*****************************************************************************
@@ -477,11 +477,11 @@ void shabby_shell(const char * tty_name)
             }
 
             /* ===== 命令查找与加载流程 ===== */
-            printf("{SHELL} [LOOKUP] Searching for command: %s\n", argv[0]);
+            // printf("{SHELL} [LOOKUP] Searching for command: %s\n", argv[0]);
             
             int fd = open(argv[0], O_RDWR);
             if (fd == -1) {
-                printf("{SHELL} [NOT_FOUND] Command not found: %s\n", argv[0]);
+                // printf("{SHELL} [NOT_FOUND] Command not found: %s\n", argv[0]);
                 if (current_cmd[0]) {
                     write(1, "{", 1);
                     write(1, current_cmd, strlen(current_cmd));
@@ -489,23 +489,17 @@ void shabby_shell(const char * tty_name)
                 }
             }
             else {
-                printf("{SHELL} [FOUND] Command exists: %s\n", argv[0]);
                 close(fd);
                 
-                printf("{SHELL} [FORK] Creating child process for: %s\n", argv[0]);
                 int pid = fork();
                 if (pid != 0) { 
-                    printf("{SHELL} [PARENT] Child PID=%d, waiting...\n", pid);
                     int s;
-                    // 并行执行的关键点
-                    // 如果想要完全并行，需要把 wait 注释掉，但完全的并行会导致输出混乱
                     wait(&s); 
-                    printf("{SHELL} [PARENT] Child exited with status=%d\n", s);
                 }
                 else {  
                     /* ===== 完整性校验 ===== */
-                    printf("{SHELL} [VERIFY] Checking integrity of: %s\n", argv[0]);
-                    if (shell_verify_integrity(argv[0]) != 0) {
+                    printf("{SHELL} [VERIFY] Checking: %s\n", argv[0]);
+                    if (verify_integrity(argv[0]) != 0) {
                         printf("{SHELL} [BLOCKED] Execution denied!\n");
                         exit(1); /* 校验失败，子进程退出 */
                     }
