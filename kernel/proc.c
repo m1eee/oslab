@@ -53,12 +53,8 @@ PUBLIC void schedule()
 					p->ticks = p->priority;
 	}
 
-    /* LOG_SCHED */
-    if (LOG_ALL & LOG_SCHED) {
-        /* Avoid logging every single tick switch if same proc, maybe? */
-        /* For now, just log everything as requested */
-        klog(LOG_SCHED, "SCHED: Switch to %s (PID:%d)\n", p_proc_ready->name, proc2pid(p_proc_ready));
-    }
+    /* LOG_SCHED - klog internally checks log_enabled and log_mask */
+    klog(LOG_SCHED, "SCHED: Switch to %s (PID:%d)\n", p_proc_ready->name, proc2pid(p_proc_ready));
 }
 
 /*****************************************************************************

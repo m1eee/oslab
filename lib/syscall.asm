@@ -15,9 +15,27 @@ _NR_sendrec	    equ 1
 global	printx
 global	sendrec
 global  getklog
+global  setlogctrl
 
 bits 32
 [section .text]
+
+; ====================================================================================
+;                          int setlogctrl(int enabled, int mask);
+; ====================================================================================
+setlogctrl:
+	push	ebx		; 4 bytes
+	push	edx		; 4 bytes
+
+	mov	eax, 3          ; _NR_setlogctrl = 3
+	mov	ebx, [esp + 8 + 4]	; enabled
+	mov	edx, [esp + 8 + 8]	; mask
+	int	INT_VECTOR_SYS_CALL
+
+	pop	edx
+	pop	ebx
+
+	ret
 
 ; ====================================================================================
 ;                          int getklog(char* buf);

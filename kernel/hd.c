@@ -62,6 +62,9 @@ PUBLIC void task_hd()
 
 		int src = msg.source;
 
+        /* LOG_DEV - klog internally checks log_enabled and log_mask */
+        klog(LOG_DEV, "HD: Msg %d from %d, dev=%d\n", msg.type, src, msg.DEVICE);
+
 		switch (msg.type) {
 		case DEV_OPEN:
 			hd_open(msg.DEVICE);

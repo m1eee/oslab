@@ -69,7 +69,9 @@ PRIVATE void get_time_string(char * buf)
 
 PUBLIC void klog(int type, char *fmt, ...)
 {
-    if (!(LOG_ALL & type)) return;
+    /* Check global log enable and mask */
+    if (!log_enabled) return;
+    if (!(log_mask & type)) return;
 
     char buf[256];
     char time_str[16];
@@ -122,4 +124,29 @@ PUBLIC int sys_getklog(int _unused1, int _unused2, char* buf, struct proc* p_pro
     }
     
     return len;
+}
+
+/*****************************************************************************
+ *                                sys_setlogctrl
+ *****************************************************************************/
+/**
+ * <Ring 0> System call to control logging.
+ *
+ * @param enabled  1 to enable logging, 0 to disable
+ * @param mask     Bitmask of log types to enable (LOG_SCHED|LOG_FS|LOG_SYSCALL|LOG_DEV)
+ * @param _unused  Unused parameter
+ * @param p_proc   The calling process
+ *
+ * @return Previous log_enabled state
+ *****************************************************************************/
+PUBLIC int sys_setlogctrl(int enabled, int mask, int _unused, struct proc* p_proc)
+{
+    int prev = log_enabled;
+    
+    log_enabled = enabled ? 1 : 0;
+    if (mask > 0) {
+        log_mask = mask & 0x0F;  /* Only allow valid mask bits */
+    }
+    
+    return prev;
 }

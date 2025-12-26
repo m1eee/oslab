@@ -54,7 +54,8 @@ PUBLIC	irq_handler	irq_table[NR_IRQ];
 
 PUBLIC	system_call	sys_call_table[NR_SYS_CALL] = {sys_printx,
 						       sys_sendrec,
-						       sys_getklog};
+						       sys_getklog,
+						       sys_setlogctrl};
 
 /* FS related below */
 /*****************************************************************************/
@@ -96,4 +97,10 @@ PUBLIC	char *		logbuf		= (char*)0x800000;
 PUBLIC	const int	LOGBUF_SIZE	= 0x100000;
 PUBLIC	char *		logdiskbuf	= (char*)0x900000;
 PUBLIC	const int	LOGDISKBUF_SIZE	= 0x100000;
+
+/**
+ * System Log Control - default OFF with all categories enabled
+ */
+PUBLIC	int		log_enabled	= 0;	/* 0 = off, 1 = on */
+PUBLIC	int		log_mask	= 0x0F;	/* LOG_SCHED|LOG_FS|LOG_SYSCALL|LOG_DEV */
 

@@ -50,10 +50,8 @@ PUBLIC void task_fs()
 		int src = fs_msg.source;
 		pcaller = &proc_table[src];
 
-        /* LOG_FS */
-        if (LOG_ALL & LOG_FS) {
-            klog(LOG_FS, "FS: Msg %d from %d\n", msgtype, src);
-        }
+        /* LOG_FS - klog internally checks log_enabled and log_mask */
+        klog(LOG_FS, "FS: Msg %d from %d\n", msgtype, src);
 
 		switch (msgtype) {
 		case OPEN:

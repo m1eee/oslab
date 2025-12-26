@@ -62,3 +62,7 @@ extern	char *			logbuf;
 extern	const int		LOGBUF_SIZE;
 extern	char *			logdiskbuf;
 extern	const int		LOGDISKBUF_SIZE;
+
+/* System Log Control */
+EXTERN	int			log_enabled;	/* 0 = off, 1 = on */
+EXTERN	int			log_mask;	/* LOG_SCHED | LOG_FS | LOG_SYSCALL | LOG_DEV */

@@ -150,6 +150,7 @@ PUBLIC void spin(char * func_name);
 PUBLIC	int	sys_sendrec(int function, int src_dest, MESSAGE* m, struct proc* p);
 PUBLIC	int	sys_printx(int _unused1, int _unused2, char* s, struct proc * p_proc);
 PUBLIC  int     sys_getklog(int _unused1, int _unused2, char* buf, struct proc* p_proc);
+PUBLIC  int     sys_setlogctrl(int enabled, int mask, int _unused, struct proc* p_proc);
 
 /* syscall.asm */
 PUBLIC  void    sys_call();             /* int_handler */
@@ -158,6 +159,7 @@ PUBLIC  void    sys_call();             /* int_handler */
 PUBLIC	int	sendrec(int function, int src_dest, MESSAGE* p_msg);
 PUBLIC	int	printx(char* str);
 PUBLIC  int getklog(char * buf);
+PUBLIC  int setlogctrl(int enabled, int mask);
 
 /* kernel/log.c */
 PUBLIC void klog(int type, char *fmt, ...);
