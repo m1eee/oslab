@@ -41,3 +41,8 @@
 #define SET_LOG_SECT_SMAP_AT_STARTUP
 #define MEMSET_LOG_SECTS
 #define	NR_SECTS_FOR_LOG		2048 /* 2048 sects */
+
+/*
+ * Dynamic process measuring
+ */
+#define ENABLE_DYNAMIC_MEASURE 1 

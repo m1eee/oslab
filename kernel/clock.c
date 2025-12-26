@@ -18,7 +18,7 @@
 #include "console.h"
 #include "global.h"
 #include "proto.h"
-
+#include "config.h"
 
 /*****************************************************************************
  *                                clock_handler
@@ -31,6 +31,7 @@
  *****************************************************************************/
 PUBLIC void clock_handler(int irq)
 {
+	
 	if (++ticks >= MAX_TICKS)
 		ticks = 0;
 
@@ -47,6 +48,13 @@ PUBLIC void clock_handler(int irq)
 	if (p_proc_ready->ticks > 0) {
 		return;
 	}
+
+#if ENABLE_DYNAMIC_MEASURE
+	if (++measure_cnt >= MEASURE_INTERVAL_TICKS) {
+        measure_cnt = 0;
+        measure_pending = 1;
+    }
+#endif
 
 	schedule();
 

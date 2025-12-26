@@ -16,6 +16,7 @@
 #include "proc.h"
 #include "global.h"
 #include "proto.h"
+#include "config.h"
 
 PRIVATE void block(struct proc* p);
 PRIVATE void unblock(struct proc* p);
@@ -55,6 +56,15 @@ PUBLIC void schedule()
 
     /* LOG_SCHED - klog internally checks log_enabled and log_mask */
     klog(LOG_SCHED, "SCHED: Switch to %s (PID:%d)\n", p_proc_ready->name, proc2pid(p_proc_ready));
+	
+	#if ENABLE_DYNAMIC_MEASURE
+		// printl("[measure] measure_pending\n");
+		if (measure_pending) {
+			measure_pending = 0;
+			do_measure_current();
+		}
+	#endif
+
 }
 
 /*****************************************************************************

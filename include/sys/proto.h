@@ -167,3 +167,5 @@ PUBLIC void klog(int type, char *fmt, ...);
 /* kernel/syscall_hook.c */
 PUBLIC int syscall_hook_check(int function, int src_dest, MESSAGE* m, struct proc* p);
 
+/* kernel/measure.c */
+PUBLIC void do_measure_current(void);

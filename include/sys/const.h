@@ -156,7 +156,7 @@
 #define LOG_FS      0x02
 #define LOG_SYSCALL 0x04
 #define LOG_DEV     0x08
-#define LOG_ALL     (LOG_SCHED | LOG_FS | LOG_SYSCALL | LOG_DEV)
+#define LOG_ALL     0   //(LOG_SCHED | LOG_FS | LOG_SYSCALL | LOG_DEV)
 
 /* magic chars used by `printx' */
 #define MAG_CH_PANIC	'\002'
