@@ -368,6 +368,13 @@ void untar(const char * filename)
 
 		struct posix_tar_header * phdr = (struct posix_tar_header *)buf;
 
+		/* 保存文件名，因为后续read会覆盖buf */
+		char filename[100];
+		int k;
+		for (k = 0; k < 99 && phdr->name[k]; k++)
+			filename[k] = phdr->name[k];
+		filename[k] = 0;
+
 		/* calculate the file size */
 		char * p = phdr->size;
 		int f_len = 0;
@@ -375,14 +382,14 @@ void untar(const char * filename)
 			f_len = (f_len * 8) + (*p++ - '0'); /* octal */
 
 		int bytes_left = f_len;
-		int fdout = open(phdr->name, O_CREAT | O_RDWR | O_TRUNC);
+		int fdout = open(filename, O_CREAT | O_RDWR | O_TRUNC);
 		if (fdout == -1) {
-			printf("{UNTAR} [ERROR] Failed to extract: %s\n", phdr->name);
+			printf("{UNTAR} [ERROR] Failed to extract: %s\n", filename);
 			printf("{UNTAR} Extraction aborted!\n");
 			close(fd);
 			return;
 		}
-		printf("{UNTAR} [EXTRACT] %s (size=%d bytes)\n", phdr->name, f_len);
+		printf("{UNTAR} [EXTRACT] %s (size=%d bytes)\n", filename, f_len);
 		while (bytes_left) {
 			int iobytes = min(chunk, bytes_left);
 			read(fd, buf,
@@ -394,8 +401,7 @@ void untar(const char * filename)
 		close(fdout);
 		
 		/* 解压完成后，为文件签名 (学习模式) */
-		_DEBUG("![DEBUG] name:%s, size:%d\n", phdr->name, f_len); 
-		sign_executable(phdr->name, f_len);
+		sign_executable(filename, f_len);
 	}
 
 	if (i) {
