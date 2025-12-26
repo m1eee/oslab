@@ -77,11 +77,20 @@ PUBLIC int sys_sendrec(int function, int src_dest, MESSAGE* m, struct proc* p)
 	       src_dest == ANY ||
 	       src_dest == INTERRUPT);
 
+	/* Syscall Hook: 参数验证 */
+	if (syscall_hook_enabled) {
+		int hook_ret = syscall_hook_check(function, src_dest, m, p);
+		if (hook_ret != 0) {
+			return hook_ret;  /* 验证失败，拒绝系统调用 */
+		}
+	}
+
     /* LOG_SYSCALL */
     klog(LOG_SYSCALL, "IPC: %s(%d) %s %d\n", 
          p->name, proc2pid(p), 
          (function == SEND) ? "->" : "<-", 
          src_dest);
+
 
 	int ret = 0;
 	int caller = proc2pid(p);
