@@ -516,6 +516,8 @@ PUBLIC struct inode * get_inode(int dev, int num)
 	q->i_size = pinode->i_size;
 	q->i_start_sect = pinode->i_start_sect;
 	q->i_nr_sects = pinode->i_nr_sects;
+	// 读回加密标志 
+	memcpy(q->_unused, pinode->_unused, sizeof(q->_unused));
 	return q;
 }
 
@@ -558,6 +560,8 @@ PUBLIC void sync_inode(struct inode * p)
 	pinode->i_size = p->i_size;
 	pinode->i_start_sect = p->i_start_sect;
 	pinode->i_nr_sects = p->i_nr_sects;
+	// 写入加密标志
+	memcpy(pinode->_unused, p->_unused, sizeof(p->_unused));
 	WR_SECT(p->i_dev, blk_nr);
 }
 

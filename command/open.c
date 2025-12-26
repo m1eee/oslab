@@ -38,6 +38,7 @@ void edit(int fd, char *filename){
 		return;
 	}
 	printf("%s:\n",filename);
+	// 将缓冲区 f 的内容输出到标准输出
 	write(1, f, strlen(f));
     // add text:添加文本
     // del num:删除最后num个字符
@@ -45,6 +46,7 @@ void edit(int fd, char *filename){
 	printf("\nUsage: add, del, s\n");
 	while (1){
 		printf("\n>");
+		// 从标准输入（0）读取用户命令到 buf
 		int length = read(0, buf, BUFFER_SIZE - 1);
         if(length <= 0) continue;
 		buf[length] = '\0';

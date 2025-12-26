@@ -20,6 +20,96 @@
 #include "keyboard.h"
 #include "proto.h"
 
+/* 文件加解密 */
+#define ENC_MAGIC 0x31434E45  // 'ENC1'
+#define ENC_FLAG_ENCRYPTED 0x01
+
+static inline u32 inode_get_u32(const u8* p)
+{
+	u32 v;
+	memcpy(&v, p, sizeof(v));
+	return v;
+}
+
+static inline void inode_set_u32(u8* p, u32 v)
+{
+	memcpy(p, &v, sizeof(v));
+}
+
+static inline int inode_is_encrypted(const struct inode* pin)
+{
+	// 只对普通文件加密；目录不加密
+	if ( (pin->i_mode & I_TYPE_MASK) != I_REGULAR ) return 0;
+	// 读取标志，利用inode的_unused字段存储
+	u32 magic = inode_get_u32((const u8*)pin->_unused + 0);
+	u8  flag  = *((const u8*)pin->_unused + 4);
+	return (magic == ENC_MAGIC) && (flag & ENC_FLAG_ENCRYPTED);
+}
+
+static inline void inode_mark_encrypted(struct inode* pin)
+{
+	if ( (pin->i_mode & I_TYPE_MASK) != I_REGULAR ) return;
+	inode_set_u32((u8*)pin->_unused + 0, ENC_MAGIC);
+	*((u8*)pin->_unused + 4) |= ENC_FLAG_ENCRYPTED;
+}
+
+// 加解密函数（）
+static void crypt_buf(u8* buf, int len, const struct inode* pin, u32 file_off )
+{
+    u32 key = 0x9E3779B9u ^ (u32)pin->i_num ^ file_off;
+    for (int i = 0; i < len; i++) {
+        key ^= (key << 13);
+        key ^= (key >> 17);
+        key ^= (key << 5);
+        buf[i] ^= (u8)(key & 0xFF);
+    }
+}
+
+/* 把一个“未加密普通文件”迁移为“已加密普通文件”（原地改写扇区） */
+static void ensure_file_encrypted(struct inode* pin)
+{
+	//return; // 暂时禁用该功能
+	if ( (pin->i_mode & I_TYPE_MASK) != I_REGULAR ) return;
+	if (inode_is_encrypted(pin)) return;
+
+	/* 空文件：直接打标记即可 */
+	if (pin->i_size == 0) {
+		inode_mark_encrypted(pin);
+		sync_inode(pin);
+		return;
+	}
+
+	/* 逐扇区读出明文 -> 加密 -> 写回 */
+	u32 left = pin->i_size;
+	u32 file_off = 0;
+	u32 sect = pin->i_start_sect;
+
+	while (left > 0) {
+		int n = (left > SECTOR_SIZE) ? SECTOR_SIZE : (int)left;
+
+		rw_sector(DEV_READ, pin->i_dev, sect * SECTOR_SIZE,
+		          SECTOR_SIZE, TASK_FS, fsbuf);
+
+		/* 很关键：把最后一个扇区“文件末尾之后”的区域清零，
+		   否则以后扩展文件时，那些字节解密出来可能是脏数据 */
+		if (n < SECTOR_SIZE) {
+			memset(fsbuf + n, 0, SECTOR_SIZE - n);
+		}
+
+		crypt_buf((u8*)fsbuf, SECTOR_SIZE, pin, file_off);
+
+		rw_sector(DEV_WRITE, pin->i_dev, sect * SECTOR_SIZE,
+		          SECTOR_SIZE, TASK_FS, fsbuf);
+
+		left -= n;
+		file_off += SECTOR_SIZE;
+		sect++;
+	}
+
+	inode_mark_encrypted(pin);
+	sync_inode(pin);
+}
+
 
 /*****************************************************************************
  *                                do_rdwt
@@ -95,6 +185,18 @@ PUBLIC int do_rdwt()
 
 		int bytes_rw = 0;
 		int i;
+		int enc = inode_is_encrypted(pin);
+
+		if (fs_msg.type == WRITE) {
+			// 对老的明文文件：先整文件迁移加密一次
+			if (!enc && (pin->i_mode & I_TYPE_MASK) == I_REGULAR) {
+				printl("[enc] pid=%d fd=%d ino=%d dev=%d size=%u start=%u nr_sects=%u\n",
+       fs_msg.source, fd, pin->i_num, pin->i_dev,
+       pin->i_size, pin->i_start_sect, pin->i_nr_sects);
+				ensure_file_encrypted(pin);
+				enc = 1; // 迁移后视为加密文件 
+			}
+		}
 		for (i = rw_sect_min; i <= rw_sect_max; i += chunk) {
 			/* read/write this amount of bytes every time */
 			int bytes = min(bytes_left, chunk * SECTOR_SIZE - off);
@@ -104,7 +206,13 @@ PUBLIC int do_rdwt()
 				  chunk * SECTOR_SIZE,
 				  TASK_FS,
 				  fsbuf);
-
+			// 对于加密文件，进行解密处理
+			if (enc) {
+				for (int s = 0; s < chunk; s++) {
+					u32 off_in_file = (u32)((i - pin->i_start_sect + s) * SECTOR_SIZE);
+					crypt_buf((u8*)fsbuf + s * SECTOR_SIZE, SECTOR_SIZE, pin, off_in_file);
+				}
+			}	
 			if (fs_msg.type == READ) {
 				phys_copy((void*)va2la(src, buf + bytes_rw),
 					  (void*)va2la(TASK_FS, fsbuf + off),
@@ -114,6 +222,12 @@ PUBLIC int do_rdwt()
 				phys_copy((void*)va2la(TASK_FS, fsbuf + off),
 					  (void*)va2la(src, buf + bytes_rw),
 					  bytes);
+				if (enc) {
+					for (int s = 0; s < chunk; s++) {
+						u32 off_in_file = (u32)((i - pin->i_start_sect + s) * SECTOR_SIZE);
+						crypt_buf((u8*)fsbuf + s * SECTOR_SIZE, SECTOR_SIZE, pin, off_in_file);
+					}
+				}
 				rw_sector(DEV_WRITE,
 					  pin->i_dev,
 					  i * SECTOR_SIZE,
