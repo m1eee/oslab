@@ -123,6 +123,13 @@ PUBLIC int		verify_executable_integrity(const char *pathname,
                                             const u8 *file_data, 
                                             u32 file_size);
 
+/* mm/memprotect.c */
+PUBLIC int		is_kernel_addr(u32 linear_addr);
+PUBLIC int		verify_user_ptr(int pid, void* user_ptr, u32 size);
+PUBLIC u32		get_proc_mem_base(int pid);
+PUBLIC u32		get_proc_mem_limit(int pid);
+PUBLIC int		check_mem_access(int pid, void* user_ptr, u32 size, int write);
+
 /* console.c */
 PUBLIC void out_char(CONSOLE* p_con, char ch);
 PUBLIC void scroll_screen(CONSOLE* p_con, int direction);

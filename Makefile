@@ -34,7 +34,7 @@ OBJS		= kernel/kernel.o kernel/start.o kernel/main.o\
 			kernel/systask.o kernel/hd.o\
 			kernel/kliba.o kernel/klib.o kernel/log.o kernel/syscall_hook.o\
 			lib/syslog.o\
-			mm/main.o mm/forkexit.o mm/exec.o mm/integrity.o\
+			mm/main.o mm/forkexit.o mm/exec.o mm/integrity.o mm/memprotect.o\
 			fs/main.o fs/open.o fs/misc.o fs/read_write.o\
 			fs/link.o \
 			fs/disklog.o
@@ -215,6 +215,9 @@ mm/exec.o: mm/exec.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 mm/integrity.o: mm/integrity.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+mm/memprotect.o: mm/memprotect.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 fs/main.o: fs/main.c
