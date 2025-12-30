@@ -37,6 +37,9 @@ struct proc {
         int ticks;                 /* remained ticks */
         int priority;
 
+	/* MLFQ: queue level (0 = highest priority, larger = lower priority) */
+	int queue_level;
+
 	/* u32 pid;                   /\* process id passed in from MM *\/ */
 	char name[16];		   /* name of the process */
 

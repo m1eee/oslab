@@ -112,6 +112,9 @@ PUBLIC int do_fork()
 		  (PROC_IMAGE_SIZE_DEFAULT - 1) >> LIMIT_4K_SHIFT,
 		  DA_LIMIT_4K | DA_32 | DA_DRW | PRIVILEGE_USER << 5);
 
+	/* MLFQ: new process starts at highest priority queue */
+	p->queue_level = 0;
+
 	/* tell FS, see fs_fork() */
 	MESSAGE msg2fs;
 	msg2fs.type = FORK;

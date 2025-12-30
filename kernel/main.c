@@ -105,6 +105,7 @@ PUBLIC int kernel_main()
 		p->regs.eflags	= eflags;
 
 		p->ticks = p->priority = prio;
+		p->queue_level = 0;  /* MLFQ: start at highest priority queue */
 
 		p->p_flags = 0;
 		p->p_msg = 0;

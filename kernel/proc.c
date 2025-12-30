@@ -31,16 +31,28 @@ PRIVATE int  deadlock(int src, int dest);
  *****************************************************************************/
 /**
  * <Ring 0> Choose one proc to run.
- * 
+ * MLFQ: Multi-Level Feedback Queue Scheduling
+ *   - Lower queue_level = higher priority
+ *   - Within same level, choose process with most ticks
+ *   - When ticks exhausted, demote to lower queue (queue_level++)
  *****************************************************************************/
 PUBLIC void schedule()
 {
 	struct proc*	p;
 	int		greatest_ticks = 0;
+	int		highest_queue = 9999;  /* find minimum queue_level */
 
 	while (!greatest_ticks) {
+		/* Phase 1: Find the highest priority queue with runnable procs */
 		for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
-			if (p->p_flags == 0) {
+			if (p->p_flags == 0 && p->queue_level < highest_queue) {
+				highest_queue = p->queue_level;
+			}
+		}
+
+		/* Phase 2: Within that queue, select proc with greatest ticks */
+		for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+			if (p->p_flags == 0 && p->queue_level == highest_queue) {
 				if (p->ticks > greatest_ticks) {
 					greatest_ticks = p->ticks;
 					p_proc_ready = p;
@@ -48,10 +60,21 @@ PUBLIC void schedule()
 			}
 		}
 
-		if (!greatest_ticks)
-			for (p = &FIRST_PROC; p <= &LAST_PROC; p++)
-				if (p->p_flags == 0)
-					p->ticks = p->priority;
+		/* Phase 3: If no ticks left at this level, demote and reset */
+		if (!greatest_ticks) {
+			for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+				if (p->p_flags == 0 && p->queue_level == highest_queue) {
+					/* Demote: increase queue_level (max 3 levels) */
+					if (p->queue_level < 2)
+						p->queue_level++;
+					/* Reset ticks based on queue level */
+					p->ticks = p->priority >> p->queue_level;
+					if (p->ticks < 1) p->ticks = 1;
+				}
+			}
+			/* Reset for next iteration */
+			highest_queue = 9999;
+		}
 	}
 
     /* LOG_SCHED - klog internally checks log_enabled and log_mask */

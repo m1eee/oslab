@@ -20,6 +20,10 @@
 #include "proto.h"
 #include "config.h"
 
+/* MLFQ: Priority boost interval (prevent starvation) */
+#define MLFQ_BOOST_INTERVAL  (HZ * 5)  /* 5 seconds */
+PRIVATE int mlfq_boost_counter = 0;
+
 /*****************************************************************************
  *                                clock_handler
  *****************************************************************************/
@@ -43,6 +47,18 @@ PUBLIC void clock_handler(int irq)
 
 	if (k_reenter != 0) {
 		return;
+	}
+
+	/* MLFQ: Periodic priority boost to prevent starvation */
+	if (++mlfq_boost_counter >= MLFQ_BOOST_INTERVAL) {
+		struct proc* p;
+		mlfq_boost_counter = 0;
+		for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+			if (p->p_flags == 0) {
+				p->queue_level = 0;  /* Boost to highest queue */
+				p->ticks = p->priority;
+			}
+		}
 	}
 
 	if (p_proc_ready->ticks > 0) {
